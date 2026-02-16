@@ -39,6 +39,22 @@ const App: React.FC = () => {
     );
   }, [isDark]);
 
+  // Check for scanned QR code from content script
+  useEffect(() => {
+    chrome.storage.local.get(['scanned_qr_code'], (result) => {
+      if (result.scanned_qr_code) {
+        setEditAccount({
+          id: '',
+          issuer: '',
+          accountName: '',
+          secret: result.scanned_qr_code
+        });
+        setShowAddModal(true);
+        chrome.storage.local.remove('scanned_qr_code');
+      }
+    });
+  }, []);
+
   const handleAddAccount = async (account: Account) => {
     if (editAccount) {
       await updateAccount(account.id, account);

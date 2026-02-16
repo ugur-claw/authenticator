@@ -91,9 +91,12 @@ async function endSelection() {
   
   // Minimum selection size
   if (rect.width < 50 || rect.height < 50) {
+    console.log('[Content] Selection too small');
     cancelSelection();
     return;
   }
+  
+  console.log('[Content] Requesting screen capture, selection:', rect);
   
   // Request screen capture from background script
   try {
@@ -101,7 +104,10 @@ async function endSelection() {
       chrome.runtime.sendMessage({ action: 'captureScreen' }, resolve);
     });
     
+    console.log('[Content] Screen capture response:', response);
+    
     if (response.error) {
+      console.error('[Content] Screen capture error:', response.error);
       chrome.runtime.sendMessage({
         action: 'qrScanError',
         error: response.error
@@ -110,9 +116,10 @@ async function endSelection() {
     }
     
     if (!response.stream) {
+      console.error('[Content] No stream received');
       chrome.runtime.sendMessage({
         action: 'qrScanError',
-        error: 'Could not capture screen'
+        error: 'Could not capture screen. Make sure to grant screen capture permission when prompted.'
       });
       return;
     }
@@ -211,7 +218,10 @@ function cleanup() {
 
 // Listen for messages from popup to start selection
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  console.log('[Content] Message received:', request.action);
+  
   if (request.action === 'startQrScan' || request.action === 'startSelection') {
+    console.log('[Content] Creating QR scan overlay');
     createOverlay();
     sendResponse({ success: true });
   } else if (request.action === 'cancelSelection' || request.action === 'cancelQrScan') {

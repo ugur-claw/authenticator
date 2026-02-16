@@ -78,14 +78,29 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
 
   const handleQrScan = async () => {
     try {
-      // Send message to content script to start selection
+      // First, check the active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) return;
+      
+      if (!tab?.id) {
+        setError('No active tab found. Please switch to a tab with a QR code.');
+        return;
+      }
 
-      // Create listeners for the result
+      // Check if the tab URL is supported for content scripts
+      const url = tab.url || '';
+      if (url.startsWith('chrome://') || url.startsWith('about:') || url.startsWith('file://') || url.startsWith('chrome-extension://')) {
+        setError('Cannot scan QR codes on this page. Please navigate to a webpage with a QR code.');
+        return;
+      }
+
+      console.log('[QR Scan] Starting on tab:', tab.id, tab.url);
+
+      // Create listeners for the result BEFORE sending the message
       const listener = (message: { action: string; uri?: string; error?: string }) => {
+        console.log('[QR Scan] Message received:', message);
         if (message.action === 'qrScanned' && message.uri) {
           setSecret(message.uri);
+          setError('');
           chrome.runtime.onMessage.removeListener(listener);
           chrome.runtime.onMessage.removeListener(errorListener);
         } else if (message.action === 'qrScanError' && message.error) {
@@ -96,6 +111,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
       };
       
       const errorListener = (message: { action: string; error?: string }) => {
+        console.log('[QR Scan] Error message:', message);
         if (message.action === 'qrScanError' && message.error) {
           setError(message.error);
           chrome.runtime.onMessage.removeListener(listener);
@@ -109,8 +125,9 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
       // Request QR scanning - send to content script
       await chrome.tabs.sendMessage(tab.id, { action: 'startQrScan' });
     } catch (err) {
-      console.error('QR scan error:', err);
-      setError('Could not start QR scan. Make sure you are on a page and try again.');
+      console.error('[QR Scan] Error:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Could not start QR scan: ${errorMsg}. Make sure you are on a webpage (not a Chrome internal page) and try again.`);
     }
   };
 

@@ -1,6 +1,3 @@
-// Content script for QR code selection
-// Allows users to select an area on the screen to capture QR codes
-
 import jsQR from 'jsqr';
 
 let selectionOverlay: HTMLDivElement | null = null;
@@ -11,7 +8,7 @@ let isSelecting = false;
 
 function createOverlay() {
   if (selectionOverlay) return;
-  
+
   selectionOverlay = document.createElement('div');
   selectionOverlay.id = 'qr-scanner-overlay';
   selectionOverlay.style.cssText = `
@@ -20,41 +17,43 @@ function createOverlay() {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 999999;
+    background: transparent;
+    z-index: 2147483647;
     cursor: crosshair;
   `;
-  
+
   selectionBox = document.createElement('div');
+  // Spotlight efekti: Seçilen alan şeffaf, etrafı yarı saydam siyah (dev gölge ile)
   selectionBox.style.cssText = `
     position: absolute;
     border: 2px solid #007AFF;
     background: transparent;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
     display: none;
     pointer-events: none;
+    border-radius: 4px;
   `;
-  
+
   selectionOverlay.appendChild(selectionBox);
   document.body.appendChild(selectionOverlay);
-  
+
   selectionOverlay.addEventListener('mousedown', startSelection);
   selectionOverlay.addEventListener('mousemove', updateSelection);
   selectionOverlay.addEventListener('mouseup', endSelection);
-  selectionOverlay.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      cancelSelection();
-    }
-  });
-  
-  // Prevent scrolling while selecting
-  selectionOverlay.addEventListener('wheel', (_e) => _e.preventDefault(), { passive: false });
+  document.addEventListener('keydown', handleKeyDown);
+  selectionOverlay.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+}
+
+function handleKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    cancelSelection();
+  }
 }
 
 function startSelection(e: MouseEvent) {
   isSelecting = true;
   startX = e.clientX;
   startY = e.clientY;
-  
   if (selectionBox) {
     selectionBox.style.display = 'block';
     selectionBox.style.left = `${startX}px`;
@@ -66,15 +65,15 @@ function startSelection(e: MouseEvent) {
 
 function updateSelection(e: MouseEvent) {
   if (!isSelecting || !selectionBox) return;
-  
+
   const currentX = e.clientX;
   const currentY = e.clientY;
-  
+
   const left = Math.min(startX, currentX);
   const top = Math.min(startY, currentY);
   const width = Math.abs(currentX - startX);
   const height = Math.abs(currentY - startY);
-  
+
   selectionBox.style.left = `${left}px`;
   selectionBox.style.top = `${top}px`;
   selectionBox.style.width = `${width}px`;
@@ -84,122 +83,70 @@ function updateSelection(e: MouseEvent) {
 async function endSelection() {
   if (!isSelecting) return;
   isSelecting = false;
-  
   if (!selectionBox) return;
-  
+
   const rect = selectionBox.getBoundingClientRect();
-  
-  // Minimum selection size
-  if (rect.width < 50 || rect.height < 50) {
-    console.log('[Content] Selection too small');
+
+  // Çok küçük seçimleri yoksay
+  if (rect.width < 10 || rect.height < 10) {
     cancelSelection();
     return;
   }
-  
-  console.log('[Content] Requesting screen capture, selection:', rect);
-  
-  // Request screen capture from background script
+
   try {
-    const response = await new Promise<{ stream?: MediaStream; error?: string }>((resolve) => {
-      chrome.runtime.sendMessage({ action: 'captureScreen' }, resolve);
-    });
-    
-    console.log('[Content] Screen capture response:', response);
-    
-    if (response.error) {
-      console.error('[Content] Screen capture error:', response.error);
-      chrome.runtime.sendMessage({
-        action: 'qrScanError',
-        error: response.error
-      });
-      return;
+    const response = await chrome.runtime.sendMessage({ action: 'captureScreen' });
+    if (response && response.dataUrl) {
+      processImage(response.dataUrl, rect);
+    } else {
+      handleError(response?.error || 'Ekran görüntüsü alınamadı.');
     }
-    
-    if (!response.stream) {
-      console.error('[Content] No stream received');
-      chrome.runtime.sendMessage({
-        action: 'qrScanError',
-        error: 'Could not capture screen. Make sure to grant screen capture permission when prompted.'
-      });
-      return;
-    }
-    
-    // Create video element to capture frame
-    const video = document.createElement('video');
-    video.srcObject = response.stream;
-    await video.play();
-    
-    // Create canvas to extract the selected region
+  } catch (err) {
+    handleError('Bağlantı hatası.');
+  }
+
+  cleanup();
+}
+
+function processImage(dataUrl: string, rect: DOMRect) {
+  const image = new Image();
+  image.onload = () => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      chrome.runtime.sendMessage({
-        action: 'qrScanError',
-        error: 'Could not process image'
-      });
-      return;
+    if (!ctx) return;
+
+    // Retina ekranlar için Pixel Ratio kontrolü
+    const dpr = window.devicePixelRatio || 1;
+
+    // Seçilen alanı kırp
+    const cropX = rect.left * dpr;
+    const cropY = rect.top * dpr;
+    const cropWidth = rect.width * dpr;
+    const cropHeight = rect.height * dpr;
+
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
+
+    ctx.drawImage(
+      image,
+      cropX, cropY, cropWidth, cropHeight, // Source
+      0, 0, cropWidth, cropHeight         // Destination
+    );
+
+    const imageData = ctx.getImageData(0, 0, cropWidth, cropHeight);
+    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+
+    if (qrCode && qrCode.data) {
+      chrome.runtime.sendMessage({ action: 'qrScanned', uri: qrCode.data });
+    } else {
+      handleError('Seçilen alanda QR kod bulunamadı.');
     }
-    
-    // Set video dimensions
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    // Draw video frame
-    ctx.drawImage(video, 0, 0);
-    
-    // Calculate scale factor between page and video
-    const scaleX = video.videoWidth / window.innerWidth;
-    const scaleY = video.videoHeight / window.innerHeight;
-    
-    // Extract selected region (scaled)
-    const scaledX = rect.left * scaleX;
-    const scaledY = rect.top * scaleY;
-    const scaledWidth = rect.width * scaleX;
-    const scaledHeight = rect.height * scaleY;
-    
-    // Create smaller canvas for selected region
-    const regionCanvas = document.createElement('canvas');
-    regionCanvas.width = rect.width;
-    regionCanvas.height = rect.height;
-    const regionCtx = regionCanvas.getContext('2d');
-    
-    if (regionCtx) {
-      regionCtx.drawImage(
-        canvas,
-        scaledX, scaledY, scaledWidth, scaledHeight,
-        0, 0, rect.width, rect.height
-      );
-      
-      const imageData = regionCtx.getImageData(0, 0, rect.width, rect.height);
-      
-      // Try to decode QR code
-      const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
-      
-      if (qrCode && qrCode.data) {
-        chrome.runtime.sendMessage({
-          action: 'qrScanned',
-          uri: qrCode.data
-        });
-      } else {
-        chrome.runtime.sendMessage({
-          action: 'qrScanError',
-          error: 'No QR code found in selection'
-        });
-      }
-    }
-    
-    // Stop the stream
-    response.stream.getTracks().forEach(track => track.stop());
-    
-  } catch (err) {
-    console.error('Error capturing area:', err);
-    chrome.runtime.sendMessage({
-      action: 'qrScanError',
-      error: 'Failed to capture screen area'
-    });
-  }
-  
-  cleanup();
+  };
+  image.src = dataUrl;
+}
+
+function handleError(msg: string) {
+  console.error(msg);
+  chrome.runtime.sendMessage({ action: 'qrScanError', error: msg });
 }
 
 function cancelSelection() {
@@ -208,6 +155,7 @@ function cancelSelection() {
 }
 
 function cleanup() {
+  document.removeEventListener('keydown', handleKeyDown);
   if (selectionOverlay) {
     selectionOverlay.remove();
     selectionOverlay = null;
@@ -216,16 +164,12 @@ function cleanup() {
   isSelecting = false;
 }
 
-// Listen for messages from popup to start selection
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  console.log('[Content] Message received:', request.action);
-  
   if (request.action === 'startQrScan' || request.action === 'startSelection') {
-    console.log('[Content] Creating QR scan overlay');
     createOverlay();
     sendResponse({ success: true });
-  } else if (request.action === 'cancelSelection' || request.action === 'cancelQrScan') {
+  } else if (request.action === 'cancelSelection') {
     cancelSelection();
     sendResponse({ success: true });
   }
-}); 
+});

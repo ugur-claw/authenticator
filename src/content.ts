@@ -1,5 +1,41 @@
 import jsQR from 'jsqr';
 
+// Helper: UUID oluşturucu
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// Helper: URI Parser ve Hesap Oluşturucu
+function parseAndCreateAccount(uri: string) {
+  try {
+    const url = new URL(uri);
+    if (url.protocol !== 'otpauth:') return null;
+    const label = decodeURIComponent(url.pathname.substring(1));
+    const secret = url.searchParams.get('secret');
+    const issuerParam = url.searchParams.get('issuer');
+    if (!secret) return null;
+    let accountName = label;
+    let issuer = issuerParam || '';
+    if (label.includes(':')) {
+      const parts = label.split(':');
+      if (!issuer) issuer = parts[0];
+      accountName = parts.slice(1).join(':').trim();
+    }
+    return { 
+      id: generateUUID(), 
+      issuer: issuer.trim(), 
+      accountName: accountName.trim(), 
+      secret: secret.replace(/\s/g, '').toUpperCase(), 
+    };
+  } catch (e) {
+    console.error('URI Parse hatası:', e);
+    return null;
+  }
+}
+
 let selectionOverlay: HTMLDivElement | null = null;
 let selectionBox: HTMLDivElement | null = null;
 let startX = 0;
@@ -119,9 +155,23 @@ function processImage(dataUrl: string, rect: DOMRect) {
     const imageData = ctx.getImageData(0, 0, cropWidth, cropHeight);
     const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
     if (qrCode && qrCode.data) {
-      chrome.storage.local.set({ 'scanned_qr_code': qrCode.data }, () => {
-        alert('QR Kod Başarıyla Tarandı! Kodu eklemek için Authenticator simgesine tıklayarak extension\'ı tekrar açın.');
-      });
+      const newAccount = parseAndCreateAccount(qrCode.data);
+      if (newAccount) {
+        chrome.storage.local.get('authenticator_accounts', (result) => {
+          const accounts = result.authenticator_accounts || [];
+          const exists = accounts.some((a: any) => a.secret === newAccount.secret);
+          if (!exists) {
+            accounts.push(newAccount);
+            chrome.storage.local.set({ 'authenticator_accounts': accounts }, () => {
+              alert(`✅ Hesap Eklendi! Issuer: ${newAccount.issuer} Account: ${newAccount.accountName}`);
+            });
+          } else {
+            alert('⚠️ Bu hesap zaten ekli.');
+          }
+        });
+      } else {
+        alert('❌ QR Kod formatı geçersiz veya desteklenmiyor.');
+      }
     } else {
       alert('Seçilen alanda QR kod bulunamadı.');
     }

@@ -230,6 +230,18 @@ body {
   color: var(--danger);
 }
 
+.account-code.success {
+  color: var(--success) !important;
+}
+
+.account-code.warning {
+  color: var(--warning) !important;
+}
+
+.account-code.danger {
+  color: var(--danger) !important;
+}
+
 /* Progress Bar */
 .progress-container {
   display: flex;
@@ -258,6 +270,18 @@ body {
 
 .progress-fill.expired {
   background: var(--danger);
+}
+
+.progress-fill.success {
+  background: var(--success) !important;
+}
+
+.progress-fill.warning {
+  background: var(--warning) !important;
+}
+
+.progress-fill.danger {
+  background: var(--danger) !important;
 }
 
 .progress-text {

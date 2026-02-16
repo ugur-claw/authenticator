@@ -17,30 +17,20 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 }) => {
   const { code, remaining } = useTOTPCode(account.secret);
   const progressRef = useRef<HTMLDivElement>(null);
-  
-  // Calculate progress - when remaining is 0, it should be 100%
-  const progress = remaining === 0 ? 100 : (remaining / 30) * 100;
-  
-  // On first render, set the width immediately without animation
+
+  const progress = (remaining / 30) * 100;
+
   useEffect(() => {
     if (progressRef.current) {
-      // Remove transition temporarily for initial set
-      progressRef.current.style.transition = 'none';
+      progressRef.current.style.transition = remaining === 30 ? 'none' : 'width 1s linear';
       progressRef.current.style.width = `${progress}%`;
-      
-      // Re-enable transition after a brief delay
-      setTimeout(() => {
-        if (progressRef.current) {
-          progressRef.current.style.transition = '';
-        }
-      }, 50);
     }
-  }, []); // Only run on mount
-  
+  }, [remaining, progress]);
+
   const getStatusClass = () => {
-    if (remaining <= 5) return 'warning';
-    if (remaining >= 28) return 'expired';
-    return '';
+    if (remaining <= 5) return 'danger';
+    if (remaining <= 10) return 'warning';
+    return 'success';
   };
 
   const handleCopy = async () => {
@@ -98,7 +88,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             className={`progress-fill ${getStatusClass()}`}
           />
         </div>
-        <span className="progress-text">{remaining === 0 ? 30 : remaining}s</span>
+        <span className="progress-text">{remaining}s</span>
       </div>
     </div>
   );

@@ -82,20 +82,35 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) return;
 
-      // Create a listener for the result
-      const listener = (message: { action: string; uri?: string }) => {
+      // Create listeners for the result
+      const listener = (message: { action: string; uri?: string; error?: string }) => {
         if (message.action === 'qrScanned' && message.uri) {
           setSecret(message.uri);
           chrome.runtime.onMessage.removeListener(listener);
+          chrome.runtime.onMessage.removeListener(errorListener);
+        } else if (message.action === 'qrScanError' && message.error) {
+          setError(message.error);
+          chrome.runtime.onMessage.removeListener(listener);
+          chrome.runtime.onMessage.removeListener(errorListener);
         }
       };
+      
+      const errorListener = (message: { action: string; error?: string }) => {
+        if (message.action === 'qrScanError' && message.error) {
+          setError(message.error);
+          chrome.runtime.onMessage.removeListener(listener);
+          chrome.runtime.onMessage.removeListener(errorListener);
+        }
+      };
+      
       chrome.runtime.onMessage.addListener(listener);
+      chrome.runtime.onMessage.addListener(errorListener);
 
-      // Request QR scanning
+      // Request QR scanning - send to content script
       await chrome.tabs.sendMessage(tab.id, { action: 'startQrScan' });
     } catch (err) {
       console.error('QR scan error:', err);
-      setError('Could not start QR scan. Please manually enter the secret.');
+      setError('Could not start QR scan. Make sure you are on a page and try again.');
     }
   };
 

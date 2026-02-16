@@ -71,10 +71,14 @@ export async function importAccounts(jsonString: string): Promise<number> {
       throw new Error('Invalid format');
     }
     
-    // Validate accounts
+    // Validate accounts - check for required fields
     const validAccounts = accounts.filter(
-      (a) => a.id && a.secret && a.accountName
+      (a) => a && a.secret && a.accountName
     );
+    
+    if (validAccounts.length === 0) {
+      throw new Error('No valid accounts found');
+    }
     
     // Assign new IDs to avoid conflicts
     const mappedAccounts = validAccounts.map((a) => ({
@@ -88,7 +92,9 @@ export async function importAccounts(jsonString: string): Promise<number> {
     await saveAccounts(merged);
     
     return mappedAccounts.length;
-  } catch {
-    throw new Error('Invalid import data');
+  } catch (err) {
+    // Log the actual error for debugging but throw a cleaner one
+    console.warn('Import warning:', err);
+    throw new Error('Invalid import data. Please check the format.');
   }
 }

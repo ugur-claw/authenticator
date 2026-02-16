@@ -113,19 +113,23 @@ export function useTheme() {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    // Check system preference
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setIsDark(mediaQuery.matches);
-
-    // Listen for changes
-    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mediaQuery.addEventListener('change', handler);
-
-    return () => mediaQuery.removeEventListener('change', handler);
+    // Check localStorage first
+    const stored = localStorage.getItem('theme');
+    if (stored) {
+      setIsDark(stored === 'dark');
+    } else {
+      // Fall back to system preference
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      setIsDark(mediaQuery.matches);
+    }
   }, []);
 
   const toggle = useCallback(() => {
-    setIsDark((prev) => !prev);
+    setIsDark((prev) => {
+      const newValue = !prev;
+      localStorage.setItem('theme', newValue ? 'dark' : 'light');
+      return newValue;
+    });
   }, []);
 
   return { isDark, toggle };

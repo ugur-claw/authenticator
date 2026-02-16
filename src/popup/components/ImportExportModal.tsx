@@ -60,11 +60,12 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       setSuccess(`Successfully imported ${count} account(s)!`);
       setTimeout(() => {
         setSuccess('');
-        onImport('');
+        setImportData('');
         onClose();
       }, 2000);
     } catch (err) {
-      setError('Invalid import data. Please check the format.');
+      // Don't log error to console, just show user-friendly message
+      setError('Invalid import data. Please check the format and try again.');
     }
   };
 

@@ -151,31 +151,35 @@ const App: React.FC = () => {
             </button>
           </div>
         ) : (
-          <>
-            <div className="account-list">
-              {accounts.map((account) => (
-                <AccountCard
-                  key={account.id}
-                  account={account}
-                  onDelete={handleDelete}
-                  onEdit={handleEdit}
-                />
-              ))}
-            </div>
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%', marginTop: '16px' }}
-              onClick={() => setShowAddModal(true)}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Account
-            </button>
-          </>
+          <div className="account-list">
+            {accounts.map((account) => (
+              <AccountCard
+                key={account.id}
+                account={account}
+                onDelete={handleDelete}
+                onEdit={handleEdit}
+              />
+            ))}
+          </div>
         )}
       </main>
+
+      {/* Fixed Add Account Button */}
+      {accounts.length > 0 && (
+        <div className="fixed-bottom">
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+            onClick={() => setShowAddModal(true)}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Account
+          </button>
+        </div>
+      )}
 
       {/* Modals */}
       <AddAccountModal

@@ -1,6 +1,6 @@
 // Account Card Component
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Account } from '../utils/totp';
 import { useTOTPCode } from '../hooks/useAuthenticator';
 
@@ -16,8 +16,26 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   onEdit,
 }) => {
   const { code, remaining } = useTOTPCode(account.secret);
+  const progressRef = useRef<HTMLDivElement>(null);
   
-  const progress = (remaining / 30) * 100;
+  // Calculate progress - when remaining is 0, it should be 100%
+  const progress = remaining === 0 ? 100 : (remaining / 30) * 100;
+  
+  // On first render, set the width immediately without animation
+  useEffect(() => {
+    if (progressRef.current) {
+      // Remove transition temporarily for initial set
+      progressRef.current.style.transition = 'none';
+      progressRef.current.style.width = `${progress}%`;
+      
+      // Re-enable transition after a brief delay
+      setTimeout(() => {
+        if (progressRef.current) {
+          progressRef.current.style.transition = '';
+        }
+      }, 50);
+    }
+  }, []); // Only run on mount
   
   const getStatusClass = () => {
     if (remaining <= 5) return 'warning';
@@ -27,6 +45,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
+    // Dispatch custom event for copy feedback
+    const event = new CustomEvent('copy-code');
+    document.dispatchEvent(event);
   };
 
   return (
@@ -73,11 +94,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
       <div className="progress-container">
         <div className="progress-bar">
           <div
+            ref={progressRef}
             className={`progress-fill ${getStatusClass()}`}
-            style={{ width: `${progress}%` }}
           />
         </div>
-        <span className="progress-text">{remaining}s</span>
+        <span className="progress-text">{remaining === 0 ? 30 : remaining}s</span>
       </div>
     </div>
   );

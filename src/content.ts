@@ -1,6 +1,8 @@
 // Content script for QR code selection
 // Allows users to select an area on the screen to capture QR codes
 
+import jsQR from 'jsqr';
+
 let selectionOverlay: HTMLDivElement | null = null;
 let selectionBox: HTMLDivElement | null = null;
 let startX = 0;
@@ -79,7 +81,7 @@ function updateSelection(e: MouseEvent) {
   selectionBox.style.height = `${height}px`;
 }
 
-function endSelection() {
+async function endSelection() {
   if (!isSelecting) return;
   isSelecting = false;
   
@@ -93,16 +95,102 @@ function endSelection() {
     return;
   }
   
-  // Send selected area to extension
-  chrome.runtime.sendMessage({
-    action: 'areaSelected',
-    area: {
-      x: rect.left,
-      y: rect.top,
-      width: rect.width,
-      height: rect.height,
-    },
-  });
+  // Request screen capture from background script
+  try {
+    const response = await new Promise<{ stream?: MediaStream; error?: string }>((resolve) => {
+      chrome.runtime.sendMessage({ action: 'captureScreen' }, resolve);
+    });
+    
+    if (response.error) {
+      chrome.runtime.sendMessage({
+        action: 'qrScanError',
+        error: response.error
+      });
+      return;
+    }
+    
+    if (!response.stream) {
+      chrome.runtime.sendMessage({
+        action: 'qrScanError',
+        error: 'Could not capture screen'
+      });
+      return;
+    }
+    
+    // Create video element to capture frame
+    const video = document.createElement('video');
+    video.srcObject = response.stream;
+    await video.play();
+    
+    // Create canvas to extract the selected region
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      chrome.runtime.sendMessage({
+        action: 'qrScanError',
+        error: 'Could not process image'
+      });
+      return;
+    }
+    
+    // Set video dimensions
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw video frame
+    ctx.drawImage(video, 0, 0);
+    
+    // Calculate scale factor between page and video
+    const scaleX = video.videoWidth / window.innerWidth;
+    const scaleY = video.videoHeight / window.innerHeight;
+    
+    // Extract selected region (scaled)
+    const scaledX = rect.left * scaleX;
+    const scaledY = rect.top * scaleY;
+    const scaledWidth = rect.width * scaleX;
+    const scaledHeight = rect.height * scaleY;
+    
+    // Create smaller canvas for selected region
+    const regionCanvas = document.createElement('canvas');
+    regionCanvas.width = rect.width;
+    regionCanvas.height = rect.height;
+    const regionCtx = regionCanvas.getContext('2d');
+    
+    if (regionCtx) {
+      regionCtx.drawImage(
+        canvas,
+        scaledX, scaledY, scaledWidth, scaledHeight,
+        0, 0, rect.width, rect.height
+      );
+      
+      const imageData = regionCtx.getImageData(0, 0, rect.width, rect.height);
+      
+      // Try to decode QR code
+      const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+      
+      if (qrCode && qrCode.data) {
+        chrome.runtime.sendMessage({
+          action: 'qrScanned',
+          uri: qrCode.data
+        });
+      } else {
+        chrome.runtime.sendMessage({
+          action: 'qrScanError',
+          error: 'No QR code found in selection'
+        });
+      }
+    }
+    
+    // Stop the stream
+    response.stream.getTracks().forEach(track => track.stop());
+    
+  } catch (err) {
+    console.error('Error capturing area:', err);
+    chrome.runtime.sendMessage({
+      action: 'qrScanError',
+      error: 'Failed to capture screen area'
+    });
+  }
   
   cleanup();
 }
@@ -123,11 +211,11 @@ function cleanup() {
 
 // Listen for messages from popup to start selection
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  if (request.action === 'startSelection') {
+  if (request.action === 'startQrScan' || request.action === 'startSelection') {
     createOverlay();
     sendResponse({ success: true });
-  } else if (request.action === 'cancelSelection') {
+  } else if (request.action === 'cancelSelection' || request.action === 'cancelQrScan') {
     cancelSelection();
     sendResponse({ success: true });
   }
-});
+}); 

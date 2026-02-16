@@ -18,8 +18,9 @@ function createOverlay() {
     width: 100vw;
     height: 100vh;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 2147483647;
+    z-index: 2147483647 !important;
     cursor: crosshair;
+    display: block;
   `;
 
   selectionBox = document.createElement('div');
@@ -31,10 +32,13 @@ function createOverlay() {
     display: none;
     pointer-events: none;
     border-radius: 4px;
+    z-index: 2147483647 !important;
   `;
 
   selectionOverlay.appendChild(selectionBox);
-  document.body.appendChild(selectionOverlay);
+  
+  // KRİTİK: document.body yerine document.documentElement (html tag'i)
+  document.documentElement.appendChild(selectionOverlay);
 
   selectionOverlay.addEventListener('mousedown', startSelection);
   selectionOverlay.addEventListener('mousemove', updateSelection);
